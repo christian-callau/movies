@@ -1,0 +1,7 @@
+node_modules
+dist
+.env
+data/posters
+data/*.db-wal
+data/*.db-shm
+data/*-backup-*.db
