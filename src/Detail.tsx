@@ -1,6 +1,6 @@
 import { useEffect, type ReactNode } from 'react'
 import { Poster, ScoreBadge, SuggestionButtons } from './Card.tsx'
-import { formatDate, releaseBadge, runtime, year, type Movie } from './lib.ts'
+import { formatDate, releaseBadge, runtime, watchedLabel, year, years, type Movie } from './lib.ts'
 
 function Chips({ items, className }: { items: string[]; className: string }) {
   return (
@@ -36,12 +36,15 @@ export function Detail({ movie, basedOn, onClose, onStatus }: Props) {
   }, [onClose])
 
   const tv = movie.kind === 'tv'
-  const facts = [
-    tv && 'Series',
-    movie.release_date && formatDate(movie.release_date),
-    tv ? movie.seasons && `${movie.seasons} season${movie.seasons > 1 ? 's' : ''}` : movie.runtime_min && runtime(movie.runtime_min),
-    movie.director && `${tv ? 'Created' : 'Directed'} by ${movie.director}`,
-  ].filter(Boolean)
+  const collection = movie.kind === 'collection'
+  const facts = collection
+    ? [`${movie.parts.length} films`, years(movie)]
+    : [
+        tv && 'Series',
+        movie.release_date && formatDate(movie.release_date),
+        tv ? movie.seasons && `${movie.seasons} season${movie.seasons > 1 ? 's' : ''}` : movie.runtime_min && runtime(movie.runtime_min),
+        movie.director && `${tv ? 'Created' : 'Directed'} by ${movie.director}`,
+      ].filter(Boolean)
   const badge = releaseBadge(movie)
 
   return (
@@ -54,7 +57,7 @@ export function Detail({ movie, basedOn, onClose, onStatus }: Props) {
         <div className="flex-1 space-y-5 overflow-y-auto p-6">
           <div className="pr-8">
             <h2 className="text-2xl font-bold text-white">
-              {movie.title} <span className="font-normal text-zinc-500">{year(movie)}</span>
+              {movie.title} {!collection && <span className="font-normal text-zinc-500">{year(movie)}</span>}
             </h2>
             <p className="mt-1 text-sm text-zinc-400">{facts.join(' · ')}</p>
           </div>
@@ -62,12 +65,15 @@ export function Detail({ movie, basedOn, onClose, onStatus }: Props) {
           <div className="flex flex-wrap items-center gap-3 text-sm">
             {movie.status === 'watched' && (
               <span className="flex items-center gap-2 text-zinc-400">
-                My rating <ScoreBadge movie={movie} />
+                My tier <ScoreBadge movie={movie} />
               </span>
             )}
             {movie.tmdb_rating != null && <span className="text-zinc-400">TMDB ★ {movie.tmdb_rating.toFixed(1)}</span>}
             {badge && <span className="rounded bg-amber-400/15 px-2 py-0.5 font-semibold text-amber-300">{badge}</span>}
-            {movie.status === 'watchlist' && movie.priority && <span className="text-zinc-400">Priority: {movie.priority}</span>}
+            {movie.watched_on && <span className="text-zinc-400">Watched {watchedLabel(movie.watched_on)}</span>}
+            {movie.status === 'watchlist' && movie.shelf && (
+              <span className="rounded bg-white/10 px-2 py-0.5 text-zinc-300 capitalize">{movie.shelf}</span>
+            )}
           </div>
 
           <Chips items={movie.genres} className="bg-white/10 text-zinc-200" />
@@ -91,6 +97,19 @@ export function Detail({ movie, basedOn, onClose, onStatus }: Props) {
             <Section title="Why it was suggested">
               <p className="leading-relaxed text-sky-200">{movie.suggestion_reason}</p>
               {basedOn.length > 0 && <p className="mt-2 text-sm text-zinc-400">Based on {basedOn.map((m) => m.title).join(', ')}</p>}
+            </Section>
+          )}
+
+          {collection && (
+            <Section title="Films">
+              <ol className="space-y-1 text-sm text-zinc-300">
+                {movie.parts.map((p, i) => (
+                  <li key={p.title}>
+                    <span className="mr-2 text-zinc-500">{i + 1}.</span>
+                    {p.title} <span className="text-zinc-500">{p.year}</span>
+                  </li>
+                ))}
+              </ol>
             </Section>
           )}
 

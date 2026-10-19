@@ -19,15 +19,28 @@ app.get('/api/library', (c) =>
   }),
 )
 
-// The suggestion buttons. Requiring JSON forces a CORS preflight on cross-site requests, which is never granted.
+// The two write paths the app itself has. Requiring JSON forces a CORS preflight on cross-site
+// requests, which is never granted, so another site can't drive these.
+const jsonOnly = (c: Context) => c.req.header('content-type')?.startsWith('application/json')
+
+// The suggestion buttons.
 app.post('/api/movies/:id/status', async (c) => {
-  if (!c.req.header('content-type')?.startsWith('application/json')) return c.json({ error: 'Expected JSON' }, 415)
+  if (!jsonOnly(c)) return c.json({ error: 'Expected JSON' }, 415)
   const { status } = await c.req.json()
   if (status !== 'watchlist' && status !== 'dismissed') return c.json({ error: 'status must be watchlist or dismissed' }, 400)
   const result = db
-    .prepare(`UPDATE movies SET status = ?, priority = IIF(? = 'watchlist', 'medium', NULL) WHERE id = ? AND status = 'suggested'`)
+    .prepare(`UPDATE movies SET status = ?, shelf = IIF(? = 'watchlist', 'weekend', NULL) WHERE id = ? AND status = 'suggested'`)
     .run(status, status, Number(c.req.param('id')))
   return result.changes ? c.json({ ok: true }) : c.json({ error: 'Not a current suggestion' }, 404)
+})
+
+// Moving a watchlist entry across the divider.
+app.post('/api/movies/:id/shelf', async (c) => {
+  if (!jsonOnly(c)) return c.json({ error: 'Expected JSON' }, 415)
+  const { shelf } = await c.req.json()
+  if (shelf !== 'weekend' && shelf !== 'someday') return c.json({ error: 'shelf must be weekend or someday' }, 400)
+  const result = db.prepare(`UPDATE movies SET shelf = ? WHERE id = ? AND status = 'watchlist'`).run(shelf, Number(c.req.param('id')))
+  return result.changes ? c.json({ ok: true }) : c.json({ error: 'Not a watchlist entry' }, 404)
 })
 
 // Posters and Vite's hashed build files never change, so browsers can cache them for good.

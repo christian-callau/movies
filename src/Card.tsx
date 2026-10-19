@@ -1,6 +1,6 @@
-import { posterUrl, ratingClass, releaseBadge, score, year, type Movie } from './lib.ts'
+import { posterUrl, releaseBadge, tierClass, watchedLabel, year, years, type Movie, type Shelf } from './lib.ts'
 
-const priorityStyle = { high: 'text-rose-400', medium: 'text-amber-300', low: 'text-zinc-400' }
+const kindBadge = 'ml-1.5 rounded px-1 py-px text-[10px] font-semibold tracking-wide uppercase'
 
 export function Poster({ movie, className = '' }: { movie: Movie; className?: string }) {
   if (!movie.poster_path) {
@@ -9,15 +9,19 @@ export function Poster({ movie, className = '' }: { movie: Movie; className?: st
   return <img src={posterUrl(movie)} alt={movie.title} decoding="async" className={`object-cover ${className}`} />
 }
 
+// The user's tier on watched entries, the TMDB rating everywhere else. A tier is one letter,
+// so it gets a fixed width to keep the badge square whatever the letter is.
 export function ScoreBadge({ movie, className = '' }: { movie: Movie; className?: string }) {
-  const value = score(movie)
-  if (value == null) return null
-  const mine = movie.status === 'watched'
-  return (
-    <span className={`rounded px-1.5 py-0.5 font-bold shadow ${mine ? ratingClass(value) : 'bg-black/75 text-zinc-100'} ${className}`}>
-      {mine ? value : `★ ${value.toFixed(1)}`}
-    </span>
-  )
+  if (movie.status === 'watched') {
+    if (!movie.tier) return null
+    return (
+      <span className={`inline-block min-w-6 rounded px-1.5 py-0.5 text-center font-bold shadow ${tierClass(movie.tier)} ${className}`}>
+        {movie.tier}
+      </span>
+    )
+  }
+  if (movie.tmdb_rating == null) return null
+  return <span className={`rounded bg-black/75 px-1.5 py-0.5 font-bold text-zinc-100 shadow ${className}`}>★ {movie.tmdb_rating.toFixed(1)}</span>
 }
 
 // On cards the dismiss button is just ✕ to fit the width; the detail view spells it out.
@@ -39,7 +43,14 @@ export function SuggestionButtons({ onStatus, compact = false }: { onStatus: (st
   )
 }
 
-export function Card({ movie, onOpen, onStatus }: { movie: Movie; onOpen: () => void; onStatus: (status: 'watchlist' | 'dismissed') => void }) {
+type CardProps = {
+  movie: Movie
+  onOpen: () => void
+  onStatus: (status: 'watchlist' | 'dismissed') => void
+  onMove?: (shelf: Shelf) => void
+}
+
+export function Card({ movie, onOpen, onStatus, onMove }: CardProps) {
   const badge = releaseBadge(movie)
   const snippet = movie.status === 'watched' ? movie.review : movie.overview
   return (
@@ -63,17 +74,24 @@ export function Card({ movie, onOpen, onStatus }: { movie: Movie; onOpen: () => 
       <div className="mt-2 px-0.5">
         <h3 className="truncate text-sm font-semibold text-zinc-100" title={movie.title}>{movie.title}</h3>
         <p className="text-xs text-zinc-400">
-          {year(movie)}
-          {movie.kind === 'tv' && (
-            <span className="ml-1.5 rounded bg-violet-500/20 px-1 py-px text-[10px] font-semibold tracking-wide text-violet-300 uppercase">Series</span>
-          )}
+          {movie.kind === 'collection' ? years(movie) : year(movie)}
+          {movie.kind === 'tv' && <span className={kindBadge + ' bg-violet-500/20 text-violet-300'}>Series</span>}
+          {movie.kind === 'collection' && <span className={kindBadge + ' bg-amber-500/20 text-amber-300'}>{movie.parts.length} films</span>}
           {movie.status === 'watched' && movie.genres[0] && ` · ${movie.genres[0]}`}
-          {movie.status === 'watchlist' && movie.priority && (
-            <span className={priorityStyle[movie.priority]}> · {movie.priority[0].toUpperCase() + movie.priority.slice(1)} priority</span>
-          )}
+          {movie.watched_on && <span className="text-zinc-500"> · {watchedLabel(movie.watched_on)}</span>}
+          {movie.kind === 'collection' && movie.status !== 'watched' && movie.genres[0] && ` · ${movie.genres[0]}`}
         </p>
         {movie.status === 'suggested' && <p className="mt-1 line-clamp-3 text-xs text-sky-200/80">{movie.suggestion_reason}</p>}
       </div>
+      {onMove && movie.shelf && (
+        <button
+          onClick={() => onMove(movie.shelf === 'weekend' ? 'someday' : 'weekend')}
+          title={movie.shelf === 'weekend' ? 'Move below the line, to Someday' : 'Move above the line, to Weekend'}
+          className="mt-2 rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-400 transition hover:bg-zinc-700 hover:text-zinc-100"
+        >
+          {movie.shelf === 'weekend' ? '↓ Someday' : '↑ Weekend'}
+        </button>
+      )}
       {movie.status === 'suggested' && (
         <div className="mt-2">
           <SuggestionButtons onStatus={onStatus} compact />

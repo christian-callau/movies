@@ -1,25 +1,30 @@
 import { readFileSync } from 'node:fs'
 import { parseArgs } from 'node:util'
-import { db, getSetting, listFields, listMovies, setSetting, type Kind } from './db.ts'
+import { db, getSetting, listFields, listMovies, setSetting, tiers, type Kind } from './db.ts'
 import { details, search } from './tmdb.ts'
 
 const { positionals, values } = parseArgs({
   allowPositionals: true,
-  options: { year: { type: 'string' }, status: { type: 'string' }, tv: { type: 'boolean' } },
+  options: { year: { type: 'string' }, status: { type: 'string' }, tv: { type: 'boolean' }, collection: { type: 'boolean' } },
 })
 const [cmd, ...args] = positionals
 
 // JSON comes from an argument, or from stdin when the argument is left out.
 const readJson = (arg?: string) => JSON.parse(arg ?? readFileSync(0, 'utf8'))
 
-const editable = ['status', 'rating', 'raw_feedback', 'review', 'liked', 'disliked', 'priority', 'suggestion_reason', 'based_on']
+const editable = ['status', 'watched_on', 'tier', 'raw_feedback', 'review', 'liked', 'disliked', 'shelf', 'suggestion_reason', 'based_on']
 
 // Keeps editable fields and turns lists into JSON text. Unknown keys are rejected to catch typos.
 function columns(input: Record<string, unknown>) {
   const out: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(input)) {
+    if (key === 'rating') throw new Error(`Scores are tiers now, not numbers: pass "tier" as one of ${tiers.join(', ')}`)
     if (!editable.includes(key)) throw new Error(`Unknown field "${key}". Allowed: ${editable.join(', ')}`)
     if (listFields.includes(key) && !Array.isArray(value)) throw new Error(`"${key}" must be a list`)
+    if (key === 'watched_on' && value !== null && !/^\d{4}-\d{2}-\d{2}$/.test(String(value)))
+      throw new Error('"watched_on" must be a date like 2026-10-19, or null')
+    if (key === 'tier' && value !== null && !tiers.includes(value as never))
+      throw new Error(`"tier" must be one of ${tiers.join(', ')}, or null`)
     out[key] = listFields.includes(key) ? JSON.stringify(value) : value
   }
   return out
@@ -32,15 +37,15 @@ function insert(row: Record<string, unknown>) {
 }
 
 function brief(id: number) {
-  return db.prepare('SELECT id, kind, title, substr(release_date, 1, 4) AS year, status, rating, priority FROM movies WHERE id = ?').get(id)
+  return db.prepare('SELECT id, kind, title, substr(release_date, 1, 4) AS year, status, watched_on, tier, shelf FROM movies WHERE id = ?').get(id)
 }
 
 const commands: Record<string, () => unknown> = {
-  search: () => search(values.tv ? 'tv' : 'movie', args.join(' '), values.year),
+  search: () => search(values.collection ? 'collection' : values.tv ? 'tv' : 'movie', args.join(' '), values.year),
 
   async add() {
     const { tmdb_id, kind = 'movie', ...fields } = readJson(args[0])
-    if (kind !== 'movie' && kind !== 'tv') throw new Error('"kind" must be "movie" or "tv"')
+    if (!['movie', 'tv', 'collection'].includes(kind)) throw new Error('"kind" must be "movie", "tv" or "collection"')
     const existing = db.prepare('SELECT id, status FROM movies WHERE kind = ? AND tmdb_id = ?').get(kind, tmdb_id) as { id: number; status: string } | undefined
     if (existing) throw new Error(`Already in the library as id ${existing.id} (${existing.status}). Use update instead.`)
     const cols = columns(fields)
@@ -70,7 +75,7 @@ const commands: Record<string, () => unknown> = {
   taste: () => ({
     prompt: getSetting('taste_prompt'),
     summary: getSetting('taste_summary'),
-    watched: listMovies('watched').map(({ id, title, rating, liked, disliked }) => ({ id, title, rating, liked, disliked })),
+    watched: listMovies('watched').map(({ id, title, tier, liked, disliked }) => ({ id, title, tier, liked, disliked })),
   }),
 
   'set-taste'() {
@@ -104,7 +109,7 @@ const commands: Record<string, () => unknown> = {
       ? db.prepare('SELECT id, kind, tmdb_id FROM movies WHERE id = ?').all(Number(args[0]))
       : db.prepare('SELECT id, kind, tmdb_id FROM movies').all()) as { id: number; kind: Kind; tmdb_id: number }[]
     const update = db.prepare(`UPDATE movies SET title = @title, release_date = @release_date, poster_path = @poster_path, overview = @overview,
-      runtime_min = @runtime_min, seasons = @seasons, director = @director, tmdb_rating = @tmdb_rating, genres = @genres WHERE id = @id`)
+      runtime_min = @runtime_min, seasons = @seasons, parts = @parts, director = @director, tmdb_rating = @tmdb_rating, genres = @genres WHERE id = @id`)
     for (const r of rows) {
       const { kind, tmdb_id, ...meta } = await details(r.kind, r.tmdb_id)
       update.run({ ...meta, id: r.id })
