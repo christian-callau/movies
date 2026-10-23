@@ -3,7 +3,7 @@
 A personal web app for movies, TV series and franchise collections the user watched, wants to watch, and AI suggestions. See `PDR.md` for the full design. The user adds movies by telling you about them in this chat; you write them to SQLite through the CLI. The web app has no forms.
 
 - `npm start` builds the app and serves it at http://127.0.0.1:3000.
-- `npm run dev` runs Vite with hot reload at http://127.0.0.1:5173, plus the API.
+- `npm run dev` runs Vite with hot reload at http://127.0.0.1:5176, plus the API. A launchd agent (`com.chcallau.movies`, installed by `~/Desktop/todos/scripts/launchd/install.sh`) keeps it running from login, so don't start a second one; logs are in `~/Library/Logs/workspace-apps/movies.log`.
 - `npm run typecheck` type-checks everything.
 - The app reloads its data when the browser window regains focus, so new entries show up without a manual refresh.
 
